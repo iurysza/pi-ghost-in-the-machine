@@ -95,8 +95,9 @@ export default function (pi: ExtensionAPI) {
 
 	pi.on("session_start", async (_event, ctx) => {
 		desiredState = "idle";
-		const ok = await applyNow("idle");
-		if (!ok) ctx.ui.setStatus(EXTENSION_NAME, "ghost controller unavailable");
+		const watcherOk = process.env.HERDR_ENV !== "1" || await runController("watch-start");
+		const stateOk = await applyNow("idle");
+		if (!watcherOk || !stateOk) ctx.ui.setStatus(EXTENSION_NAME, "ghost controller unavailable");
 		else ctx.ui.setStatus(EXTENSION_NAME, undefined);
 	});
 

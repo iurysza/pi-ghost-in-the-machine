@@ -43,5 +43,6 @@ else
     echo "herdr not found; skipping focus plugin link" >&2
 fi
 
+"$ROOT/scripts/ghost-state.sh" watch-start
 "$ROOT/scripts/ghost-state.sh" apply idle
 echo "ghost-in-the-machine setup complete"

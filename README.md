@@ -30,7 +30,8 @@ The setup script:
 
 1. adds the generated state fragment to `~/.config/ghostty/config`;
 2. links the bundled Herdr plugin when Herdr is installed;
-3. initializes the idle shader and asks Ghostty to reload.
+3. starts the singleton sidebar watcher;
+4. initializes the idle shader and asks Ghostty to reload.
 
 Reload Pi after installation:
 
@@ -53,10 +54,11 @@ Then initialize a state:
 ~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine/scripts/ghost-state.sh apply idle
 ```
 
-For Herdr focus routing:
+For Herdr focus and sidebar routing:
 
 ```sh
 herdr plugin link ~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine
+~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine/scripts/ghost-state.sh watch-start
 ```
 
 ## Lifecycle states
@@ -91,7 +93,7 @@ States remain visible for at least two seconds so Ghostty has time to reload and
 
 Ghostty 1.3.1 does not watch shader file contents. The controller instead rewrites a small config fragment so `custom-shader` points to a different bundled variant, then sends Ghostty its supported external reload signal, `SIGUSR2`. Because the configured path changes, Ghostty rebuilds the shader pipeline.
 
-Herdr does not forward the OSC cursor-color channel needed by the original shader integration. The bundled Herdr plugin tracks `pane.focused`, restores each Pi pane's last state, and removes the shader when a non-Pi pane is focused.
+Herdr does not forward the OSC cursor-color channel needed by the original shader integration. The bundled Herdr plugin tracks `pane.focused`, restores each Pi pane's last state, and removes the shader when a non-Pi pane is focused. Inside Herdr, the Pi extension also starts one shared 50ms layout watcher. Collapsing the sidebar hides the ghost; lifecycle updates remain gated to `off`; expanding restores the focused Pi pane's latest state.
 
 Runtime files live under:
 
@@ -99,15 +101,15 @@ Runtime files live under:
 ~/.local/state/ghost-in-the-machine/
 ```
 
-## Experimental sidebar probe
+## Sidebar visibility workaround
 
-Without modifying Herdr, the bundled probe polls the current pane layout and logs geometry transitions:
+Herdr 0.7.4 does not expose sidebar visibility as a plugin event. The singleton watcher polls `herdr pane layout --current` every 50ms and records transitions in:
 
-```sh
-scripts/watch-sidebar.sh /tmp/ghost-sidebar-watch.log
+```text
+~/.local/state/ghost-in-the-machine/sidebar-watch.log
 ```
 
-It uses `~/.local/bin/herdr` when `herdr` is missing from `PATH`. With Herdr's default desktop layout, `area.x <= 4` is classified as collapsed and larger values as expanded. This is diagnostic only: hidden-sidebar mode can be ambiguous with Herdr's mobile layout.
+It uses `~/.local/bin/herdr` when `herdr` is missing from `PATH`. With Herdr's default desktop layout, `area.x <= 4` is classified as collapsed and larger values as expanded. Hidden-sidebar mode can be ambiguous with Herdr's mobile layout.
 
 ## Development
 

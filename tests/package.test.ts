@@ -79,3 +79,27 @@ test("controller writes a bundled shader path into the runtime fragment", () => 
     rmSync(stateHome, { recursive: true, force: true });
   }
 });
+
+test("collapsed sidebar gates later lifecycle states to off", () => {
+  const stateHome = mkdtempSync(join(tmpdir(), "ghost-sidebar-"));
+  const controller = join(root, "scripts/ghost-state.sh");
+  const env = {
+    ...process.env,
+    XDG_STATE_HOME: stateHome,
+    GHOSTTY_RELOAD_ENABLED: "0",
+    HERDR_ENV: "0",
+  };
+
+  try {
+    execFileSync("bash", [controller, "apply", "thinking"], { env });
+    execFileSync("bash", [controller, "sidebar", "collapsed"], { env });
+    execFileSync("bash", [controller, "apply", "working"], { env });
+
+    const runtime = join(stateHome, "ghost-in-the-machine");
+    assert.equal(readFileSync(join(runtime, "sidebar.state"), "utf8"), "collapsed\n");
+    assert.equal(readFileSync(join(runtime, "active.state"), "utf8"), "off\n");
+    assert.equal(readFileSync(join(runtime, "ghostty-state.conf"), "utf8"), "# ghost-in-the-machine: off\n");
+  } finally {
+    rmSync(stateHome, { recursive: true, force: true });
+  }
+});
