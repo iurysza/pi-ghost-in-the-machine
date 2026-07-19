@@ -24,6 +24,6 @@ viewport
 └──────────────────────────────┘
 ```
 
-The gap clamps the full animated footprint, including drift and decorations. Ghostty coordinates are top-down in the tested renderer. Shared motion—breathing, drift, gaze, blink—makes every state feel like one creature. State-specific color and decorations carry the fast read: yellow/question, blue/effort, green/sparkles, red/worry.
+The gap clamps the full animated footprint, including drift and decorations. The face renders on a dense `8 × 17 px` virtual ASCII grid so small features remain legible; sidebar placement separately uses the real `16 px` terminal-cell width. Ghostty coordinates are top-down in the tested renderer. Shared motion—breathing, drift, gaze, blink—makes every state feel like one creature. State-specific color and decorations carry the fast read: yellow/question, blue/effort, green/sparkles, red/worry.
 
 `iFocus == 0` returns the untouched terminal texture. Herdr visibility is handled earlier by the controller.
