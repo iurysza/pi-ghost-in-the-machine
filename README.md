@@ -16,8 +16,8 @@ The repository is self-contained; it does not require a separate shader checkout
 
 - Pi 0.80.4+
 - Ghostty 1.3+
-- Bash, `pgrep`, and `jq`
-- Herdr 0.7.4+ for focused-pane routing (optional)
+- Node 22.19+, Bash, `pgrep`, and `jq`
+- Herdr 0.7.4+ for focused-pane and sidebar routing (optional)
 
 ## Install
 
@@ -93,7 +93,7 @@ States remain visible for at least two seconds so Ghostty has time to reload and
 
 Ghostty 1.3.1 does not watch shader file contents. The controller instead rewrites a small config fragment so `custom-shader` points to a different bundled variant, then sends Ghostty its supported external reload signal, `SIGUSR2`. Because the configured path changes, Ghostty rebuilds the shader pipeline.
 
-Herdr does not forward the OSC cursor-color channel needed by the original shader integration. The bundled Herdr plugin tracks `pane.focused`, restores each Pi pane's last state, and removes the shader when a non-Pi pane is focused. Inside Herdr, the Pi extension also starts one shared 50ms layout watcher. Collapsing the sidebar hides the ghost; lifecycle updates remain gated to `off`; expanding restores the focused Pi pane's latest state.
+Herdr does not forward the OSC cursor-color channel needed by the original shader integration. The bundled Herdr plugin tracks `pane.focused`, restores each Pi pane's last state, and removes the shader when a non-Pi pane is focused. Inside Herdr, the Pi extension starts one long-lived Node watcher per canonical `HERDR_SOCKET_PATH`. Collapsing the sidebar hides the ghost; lifecycle updates remain gated to `off`; expanding restores the focused Pi pane's latest state.
 
 Runtime files live under:
 
@@ -103,13 +103,23 @@ Runtime files live under:
 
 ## Sidebar visibility workaround
 
-Herdr 0.7.4 does not expose sidebar visibility as a plugin event. The singleton watcher polls `herdr pane layout --current` every 50ms and records transitions in:
+Herdr 0.7.4 does not expose sidebar visibility as a plugin event. A long-lived Node process opens one short Unix-socket connection per poll, sends `pane.layout`, and parses the newline-delimited JSON response in-process. Herdr closes each API connection after one response, so the process persists but the socket connection does not.
+
+The default interval remains 50ms. Polls never overlap, and the live Herdr server currently answers slowly enough that the observed rate is closer to 10 polls/second. With Herdr's default desktop layout, `area.x <= 4` is classified as collapsed and larger values as expanded. Hidden-sidebar mode can be ambiguous with Herdr's mobile layout.
+
+Runtime files are keyed by the SHA-256 of the canonical API socket:
 
 ```text
-~/.local/state/ghost-in-the-machine/sidebar-watch.log
+~/.local/state/ghost-in-the-machine/watchers/<socket-key>/
+  socket-path
+  watcher.pid
+  watcher.log
+  start.lock/
 ```
 
-It uses `~/.local/bin/herdr` when `herdr` is missing from `PATH`. With Herdr's default desktop layout, `area.x <= 4` is classified as collapsed and larger values as expanded. Hidden-sidebar mode can be ambiguous with Herdr's mobile layout.
+`watch-start` is idempotent for one socket, different API sockets get different watchers, and direct Pi sessions outside Herdr do not start one. `herdr-client.sock` is never a watcher target.
+
+The Node watcher trades higher stable RSS for lower CPU and zero steady-state child-process churn. See [the measured comparison](ai-artifacts/docs/sidebar-watcher-performance.md).
 
 ## Development
 
@@ -119,6 +129,7 @@ npm run generate
 npm run check
 npm test
 npm pack --dry-run
+node scripts/benchmark-sidebar-watchers.mjs --seconds 15
 ```
 
 `shaders/ghost-in-the-machine.glsl` is the source shader. Commit the generated files in `shaders/variants/` after changing it.

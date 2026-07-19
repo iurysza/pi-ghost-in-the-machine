@@ -6,10 +6,8 @@ VARIANTS="$ROOT/shaders/variants"
 RUNTIME="${XDG_STATE_HOME:-$HOME/.local/state}/ghost-in-the-machine"
 SHADER_CONFIG="$RUNTIME/ghostty-state.conf"
 SIDEBAR_STATE="$RUNTIME/sidebar.state"
-WATCH_PID="$RUNTIME/sidebar-watch.pid"
-WATCH_LOG="$RUNTIME/sidebar-watch.log"
-WATCH_LOCK="$RUNTIME/sidebar-watch.lock"
-WATCHER="${GHOST_SIDEBAR_WATCHER_PATH:-$ROOT/scripts/watch-sidebar.sh}"
+WATCHERS_DIR="$RUNTIME/watchers"
+WATCHER="${GHOST_SIDEBAR_WATCHER_PATH:-$ROOT/scripts/sidebar-watcher.mjs}"
 STATE_DIR="$RUNTIME/panes"
 if [[ -n "${HERDR_BIN_PATH:-}" ]]; then
     HERDR_BIN="$HERDR_BIN_PATH"
@@ -21,7 +19,7 @@ else
     HERDR_BIN=herdr
 fi
 
-mkdir -p "$RUNTIME" "$STATE_DIR"
+mkdir -p "$RUNTIME" "$STATE_DIR" "$WATCHERS_DIR"
 
 usage() {
     echo "usage: ghost-state {set STATE|clear|focus|apply STATE|sidebar collapsed|sidebar expanded|watch-start|watch-stop|status|config-path}" >&2
@@ -139,46 +137,170 @@ set_state() {
     fi
 }
 
+canonical_socket_path() {
+    local path="${HERDR_SOCKET_PATH:-${XDG_CONFIG_HOME:-$HOME/.config}/herdr/herdr.sock}" dir base
+    [[ "$path" == /* ]] || path="$PWD/$path"
+    if [[ -e "$path" ]] && command -v realpath >/dev/null 2>&1; then
+        realpath "$path"
+        return
+    fi
+    dir="${path%/*}"
+    base="${path##*/}"
+    if [[ -d "$dir" ]]; then
+        dir="$(cd "$dir" && pwd -P)"
+    fi
+    printf '%s/%s\n' "${dir%/}" "$base"
+}
+
+watcher_paths() {
+    local key
+    WATCH_SOCKET="$(canonical_socket_path)"
+    if [[ "${WATCH_SOCKET##*/}" == "herdr-client.sock" ]]; then
+        echo "herdr-client.sock is not an API socket" >&2
+        return 1
+    fi
+    key="$(printf '%s' "$WATCH_SOCKET" | shasum -a 256 | awk '{print $1}')"
+    WATCH_DIR="$WATCHERS_DIR/$key"
+    WATCH_PID="$WATCH_DIR/watcher.pid"
+    WATCH_LOG="$WATCH_DIR/watcher.log"
+    WATCH_SOCKET_FILE="$WATCH_DIR/socket-path"
+    WATCH_LOCK="$WATCH_DIR/start.lock"
+}
+
 watcher_running() {
     local pid command
     pid="$(cat "$WATCH_PID" 2>/dev/null || true)"
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
     kill -0 "$pid" 2>/dev/null || return 1
     command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    [[ "$command" == *"$(basename "$WATCHER")"* ]]
+    [[ "$command" == *"$WATCHER"* && "$command" == *"--socket $WATCH_SOCKET --log"* ]]
+}
+
+release_watcher_lock() {
+    local owner
+    owner="$(cat "$WATCH_LOCK/owner.pid" 2>/dev/null || true)"
+    if [[ "$owner" == "$$" ]]; then
+        rm -rf "$WATCH_LOCK"
+    fi
+}
+
+lock_mtime() {
+    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+acquire_watcher_lock() {
+    local owner attempt lock_age lock_mtime_value now stale_seconds max_attempts
+    stale_seconds="${GHOST_WATCH_LOCK_STALE_SECONDS:-5}"
+    [[ "$stale_seconds" =~ ^[0-9]+$ ]] || stale_seconds=5
+    max_attempts=$((stale_seconds * 20 + 40))
+    for attempt in $(seq 1 "$max_attempts"); do
+        if mkdir "$WATCH_LOCK" 2>/dev/null; then
+            printf '%s\n' "$$" > "$WATCH_LOCK/owner.pid"
+            return 0
+        fi
+        watcher_running && return 1
+        owner="$(cat "$WATCH_LOCK/owner.pid" 2>/dev/null || true)"
+        if [[ "$owner" =~ ^[0-9]+$ ]]; then
+            if ! kill -0 "$owner" 2>/dev/null; then
+                rm -rf "$WATCH_LOCK"
+                continue
+            fi
+        else
+            lock_mtime_value="$(lock_mtime "$WATCH_LOCK")"
+            now="$(date +%s)"
+            lock_age=$((now - lock_mtime_value))
+            if (( lock_age >= stale_seconds )); then
+                rm -rf "$WATCH_LOCK"
+                continue
+            fi
+        fi
+        sleep 0.05
+    done
+    return 1
 }
 
 start_watcher() {
-    local pid tmp
-    watcher_running && return
-
-    if ! mkdir "$WATCH_LOCK" 2>/dev/null; then
-        sleep 0.2
-        watcher_running && return
-        rmdir "$WATCH_LOCK" 2>/dev/null || true
-        mkdir "$WATCH_LOCK" 2>/dev/null || return
+    local node_bin pid attempt
+    [[ "${HERDR_ENV:-}" == "1" ]] || return 0
+    watcher_paths || return
+    mkdir -p "$WATCH_DIR"
+    watcher_running && return 0
+    if ! acquire_watcher_lock; then
+        watcher_running && return 0
+        echo "could not acquire watcher start lock for $WATCH_SOCKET" >&2
+        return 1
+    fi
+    if watcher_running; then
+        release_watcher_lock
+        return 0
     fi
 
-    if watcher_running; then
-        rmdir "$WATCH_LOCK" 2>/dev/null || true
-        return
+    if [[ -n "${NODE_BIN_PATH:-}" ]]; then
+        node_bin="$NODE_BIN_PATH"
+    elif command -v node >/dev/null 2>&1; then
+        node_bin="$(node -p 'process.execPath')"
+    else
+        node_bin=""
+    fi
+    if [[ -z "$node_bin" ]]; then
+        release_watcher_lock
+        echo "node is required for the sidebar watcher" >&2
+        return 127
     fi
 
     rm -f "$WATCH_PID"
+    printf '%s\n' "$WATCH_SOCKET" > "$WATCH_SOCKET_FILE"
     HERDR_BIN_PATH="$HERDR_BIN" SIDEBAR_POLL_INTERVAL="${SIDEBAR_POLL_INTERVAL:-0.05}" \
-        nohup bash "$WATCHER" "$WATCH_LOG" </dev/null >/dev/null 2>&1 &
+        nohup "$node_bin" "$WATCHER" \
+            --socket "$WATCH_SOCKET" \
+            --log "$WATCH_LOG" \
+            --pid-file "$WATCH_PID" \
+            --socket-file "$WATCH_SOCKET_FILE" \
+            --controller "${GHOST_CONTROLLER_PATH:-$ROOT/scripts/ghost-state.sh}" \
+            </dev/null >/dev/null 2>&1 &
     pid=$!
-    tmp="$RUNTIME/.sidebar-watch.pid.$$"
-    printf '%s\n' "$pid" > "$tmp"
-    mv "$tmp" "$WATCH_PID"
-    rmdir "$WATCH_LOCK" 2>/dev/null || true
+
+    for attempt in $(seq 1 100); do
+        if watcher_running; then
+            release_watcher_lock
+            return 0
+        fi
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.02
+    done
+
+    watcher_running && {
+        release_watcher_lock
+        return 0
+    }
+    kill -TERM "$pid" 2>/dev/null || true
+    rm -f "$WATCH_PID"
+    release_watcher_lock
+    echo "sidebar watcher failed to start for $WATCH_SOCKET" >&2
+    return 1
 }
 
 stop_watcher() {
-    local pid
+    local pid attempt
+    watcher_paths || return
     pid="$(cat "$WATCH_PID" 2>/dev/null || true)"
-    if [[ "$pid" =~ ^[0-9]+$ ]] && kill -0 "$pid" 2>/dev/null; then
+    if watcher_running; then
         kill -TERM "$pid" 2>/dev/null || true
+        for attempt in $(seq 1 350); do
+            kill -0 "$pid" 2>/dev/null || break
+            sleep 0.02
+        done
+        if kill -0 "$pid" 2>/dev/null; then
+            kill -KILL "$pid" 2>/dev/null || true
+            for attempt in $(seq 1 50); do
+                kill -0 "$pid" 2>/dev/null || break
+                sleep 0.02
+            done
+        fi
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "sidebar watcher $pid did not stop" >&2
+            return 1
+        fi
     fi
     rm -f "$WATCH_PID"
 }
@@ -250,11 +372,20 @@ case "${1:-}" in
         ;;
     status)
         [[ $# -eq 1 ]] || usage
-        if watcher_running; then watcher=running; else watcher=stopped; fi
-        printf 'active=%s sidebar=%s watcher=%s\n' \
+        watcher_paths || exit 1
+        if watcher_running; then
+            watcher=running
+            watcher_pid="$(cat "$WATCH_PID")"
+        else
+            watcher=stopped
+            watcher_pid=none
+        fi
+        printf 'active=%s sidebar=%s watcher=%s watcher_pid=%s socket=%s\n' \
             "$(cat "$RUNTIME/active.state" 2>/dev/null || echo unknown)" \
             "$(sidebar_state)" \
-            "$watcher"
+            "$watcher" \
+            "$watcher_pid" \
+            "$WATCH_SOCKET"
         ;;
     config-path)
         [[ $# -eq 1 ]] || usage
