@@ -14,7 +14,7 @@ The repository is self-contained; it does not require a separate shader checkout
 
 ## Requirements
 
-- Pi
+- Pi 0.80.4+
 - Ghostty 1.3+
 - Bash, `pgrep`, and `jq`
 - Herdr 0.7.4+ for focused-pane routing (optional)

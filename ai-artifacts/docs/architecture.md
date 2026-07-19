@@ -1,15 +1,28 @@
 # Architecture
 
-The package is a narrow pipeline with four cooperating pieces.
+```mermaid
+sequenceDiagram
+    participant P as Pi extension
+    participant C as State controller
+    participant H as Herdr
+    participant F as Ghostty fragment
+    participant G as Ghostty
 
-The **Pi extension** is the lifecycle interpreter. It maps session, input, agent, and tool events into the ghost-state vocabulary. It also owns manual `/ghost-*` commands and a short dwell queue. The queue preserves visual legibility while coalescing redundant transitions; it is not a durable job queue.
+    P->>C: desired state
+    H->>C: focused pane changed
+    C->>C: resolve pane ownership
+    C->>F: select zero or one variant path
+    C-->>G: SIGUSR2
+    G->>F: reload config
+    G->>G: rebuild shader pipeline
+```
 
-The **state controller** is the boundary between semantic state and terminal integration. It remembers per-pane state, decides whether the focused Herdr pane is eligible, writes the current Ghostty fragment, and sends the reload signal. It deliberately contains no expression logic. Given a state, it selects a pre-generated shader path.
+## Load-bearing quirks
 
-The **Ghostty config fragment** is a tiny runtime handoff. It contains either one `custom-shader` path or no shader for `off`. Changing the path matters because Ghostty reloads shader pipelines when configuration points somewhere new; editing shader contents in place is not a supported state channel. The fragment lives in stable user state so package updates may move source files without changing the main Ghostty include path.
+- Ghostty does **not** watch shader contents. Change the configured path, then send `SIGUSR2`.
+- Multiple `custom-shader` entries form a pipeline; they are not alternatives. Configure zero or one variant.
+- Herdr does not forward the original OSC cursor-color state channel. State travels outside the child terminal.
+- Ghostty is global; Herdr panes are local. Per-pane memory plus focus routing prevents state leakage.
+- Runtime state lives outside the package. Package updates may move code; the Ghostty include path must remain stable.
 
-The **shader family** is the render plane. One source defines geometry, expressions, decorations, motion, color, focus gating, and terminal compositing. Generation produces forced-state variants. Each variant is intentionally self-sufficient because Ghostty treats multiple `custom-shader` entries as a pipeline, not alternatives.
-
-The **Herdr plugin** adds focus ownership. Pi sessions can update remembered state even while hidden, but only the focused Pi pane may project its state into Ghostty. Focusing another kind of pane removes the shader; returning restores that Pi pane’s last state.
-
-These pieces communicate through deliberately boring boundaries: lifecycle callbacks, command execution, small state files, one config fragment, and `SIGUSR2`. No long-running daemon is required. The cost is that Ghostty recompiles on transitions, which makes [[ai-artifacts/docs/lifecycle-and-data-flow|dwell timing]] and [[ai-artifacts/docs/integration-boundaries|external guarantees]] architectural concerns rather than polish.
+No daemon is needed. Small files and a signal form the handoff. See [[ai-artifacts/docs/semantic-map|semantic map]] for ownership and [[ai-artifacts/docs/operations-and-verification|operations]] for failure isolation.

@@ -3,7 +3,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GHOSTTY_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/ghostty/config"
-STATE_CONFIG="$($ROOT/scripts/ghost-state.sh config-path)"
+STATE_CONFIG="$("$ROOT/scripts/ghost-state.sh" config-path)"
 INCLUDE_LINE="config-file = ?$STATE_CONFIG"
 
 mkdir -p "$(dirname "$GHOSTTY_CONFIG")"
@@ -17,7 +17,7 @@ if ! grep -Fqx "$INCLUDE_LINE" "$GHOSTTY_CONFIG"; then
     } >> "$GHOSTTY_CONFIG"
     updated=true
 fi
-if ! grep -Eq '^[[:space:]]*custom-shader-animation[[:space:]]*=' "$GHOSTTY_CONFIG"; then
+if ! grep -Eq '^[[:space:]]*custom-shader-animation[[:space:]]*=[[:space:]]*(true|always)[[:space:]]*$' "$GHOSTTY_CONFIG"; then
     printf 'custom-shader-animation = true\n' >> "$GHOSTTY_CONFIG"
     updated=true
 fi
@@ -29,8 +29,12 @@ else
 fi
 
 if command -v herdr >/dev/null 2>&1; then
-    linked="$(herdr plugin list --plugin ghost-in-the-machine --json | jq -r '.result.plugins | length')"
-    if [[ "$linked" == "0" ]]; then
+    linked_root="$(herdr plugin list --plugin ghost-in-the-machine --json | jq -r '.result.plugins[0].plugin_root // empty')"
+    if [[ -n "$linked_root" && "$linked_root" != "$ROOT" ]]; then
+        herdr plugin unlink ghost-in-the-machine
+        linked_root=""
+    fi
+    if [[ -z "$linked_root" ]]; then
         herdr plugin link "$ROOT"
     else
         echo "Herdr focus plugin already linked"

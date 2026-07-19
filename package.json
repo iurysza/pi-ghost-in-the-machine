@@ -37,14 +37,15 @@
     "NOTICE"
   ],
   "scripts": {
-    "check": "tsc --noEmit && bash -n scripts/*.sh",
+    "check": "tsc --noEmit && bash -n scripts/*.sh && npm run check:generated",
+    "check:generated": "npm run generate && git diff --exit-code -- shaders/variants",
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test dist/tests/*.test.js",
     "generate": "bash scripts/generate-variants.sh",
     "prepack": "npm run build"
   },
   "peerDependencies": {
-    "@earendil-works/pi-coding-agent": "*"
+    "@earendil-works/pi-coding-agent": ">=0.80.4"
   },
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^0.80.10",

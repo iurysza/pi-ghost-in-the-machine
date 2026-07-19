@@ -39,6 +39,7 @@ current_pane() {
 
 reload_ghostty() {
     local pid
+    [[ "${GHOSTTY_RELOAD_ENABLED:-1}" == "1" ]] || return 0
     while read -r pid; do
         [[ -n "$pid" ]] && kill -USR2 "$pid" 2>/dev/null || true
     done < <(pgrep -x ghostty 2>/dev/null || true)

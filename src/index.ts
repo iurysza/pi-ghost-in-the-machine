@@ -100,12 +100,12 @@ export default function (pi: ExtensionAPI) {
 		else ctx.ui.setStatus(EXTENSION_NAME, undefined);
 	});
 
-	pi.on("input", () => setState("thinking"));
-
-	pi.on("agent_start", () => {
+	pi.on("input", () => {
 		runHadError = false;
 		setState("thinking");
 	});
+
+	pi.on("agent_start", () => setState("thinking"));
 
 	pi.on("tool_execution_start", (event) => {
 		const tool = normalizedToolName(event.toolName);

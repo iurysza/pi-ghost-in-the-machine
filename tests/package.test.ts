@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import test from "node:test";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import test from "node:test";
 
 const root = process.cwd();
 
@@ -55,4 +57,25 @@ test("controller uses stable state storage and Ghostty reload signal", () => {
   assert.match(controller, /\.local\/state}\/ghost-in-the-machine/);
   assert.match(controller, /kill -USR2/);
   assert.match(controller, /shaders\/variants/);
+});
+
+test("controller writes a bundled shader path into the runtime fragment", () => {
+  const stateHome = mkdtempSync(join(tmpdir(), "ghost-state-"));
+  try {
+    execFileSync("bash", [join(root, "scripts/ghost-state.sh"), "apply", "thinking"], {
+      env: {
+        ...process.env,
+        XDG_STATE_HOME: stateHome,
+        GHOSTTY_RELOAD_ENABLED: "0",
+        HERDR_ENV: "0",
+      },
+    });
+
+    const runtime = join(stateHome, "ghost-in-the-machine");
+    const fragment = readFileSync(join(runtime, "ghostty-state.conf"), "utf8");
+    assert.equal(fragment, `custom-shader = ${join(root, "shaders/variants/thinking.glsl")}\n`);
+    assert.equal(readFileSync(join(runtime, "active.state"), "utf8"), "thinking\n");
+  } finally {
+    rmSync(stateHome, { recursive: true, force: true });
+  }
 });
