@@ -1,7 +1,7 @@
 # Agent Map
 
-Start with [[README|the public contract]], then use [[ai-artifacts/docs/index|the engineering map]]. Do not load every note; follow the branch that matches the task.
+Start with [[README|the public contract]], then use [[ai-artifacts/docs/index|the documentation map]]. Do not load every note; follow the branch that matches the task.
 
-[[ai-artifacts/docs/semantic-map|Semantic map]] explains the three kinds of state that cause most bugs: desired, pane, and active. [[ai-artifacts/docs/architecture|Architecture]] shows the control/render split and the Ghostty/Herdr constraints that shaped it. [[ai-artifacts/docs/lifecycle|Lifecycle]] covers timing, coalescing, and error persistence. [[ai-artifacts/docs/visual-model|Visual model]] covers shader generation and placement. [[ai-artifacts/docs/operations-and-verification|Operations]] is the setup, diagnosis, and release path.
+[[ai-artifacts/SEMANTIC_MAP|Semantic map]] explains the state vocabulary behind most bugs: desired, pane, active, and sidebar. [[ai-artifacts/ARCHITECTURE|Architecture]] shows the control/render split and Ghostty/Herdr constraints. [[ai-artifacts/AGENT_ONBOARDING|Agent onboarding]] maps common changes and verification. [[ai-artifacts/docs/lifecycle|Lifecycle]] covers event mapping and timing. [[ai-artifacts/docs/VISUAL_MODEL|Visual model]] covers shader generation and placement. [[ai-artifacts/docs/OPERATIONS|Operations]] is setup, diagnosis, and release. [[ai-artifacts/docs/ROADMAP|Roadmap]] records non-promissory future work.
 
-Keep user instructions in [[README]]. Put only non-obvious, durable engineering knowledge under `ai-artifacts/docs/`, then link it from [[ai-artifacts/docs/index|the map]].
+Keep user instructions in [[README]]. Put only non-obvious, durable engineering knowledge under `ai-artifacts/`, then link it from [[ai-artifacts/docs/index|the map]].

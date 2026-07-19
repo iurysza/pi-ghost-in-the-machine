@@ -33,7 +33,7 @@ Then reload Pi:
 /reload
 ```
 
-The setup script adds the stable Ghostty state fragment, links the Herdr plugin when available, starts its per-socket watcher, and selects `idle`. For manual setup, runtime files, and diagnosis, see the [engineering map](ai-artifacts/docs/index.md).
+The setup script adds the stable Ghostty state fragment, links the Herdr plugin when available, and selects `idle`. A Pi session started inside Herdr starts its per-socket watcher. For manual setup, runtime files, and diagnosis, see the [engineering map](ai-artifacts/docs/index.md).
 
 ## Lifecycle and commands
 
