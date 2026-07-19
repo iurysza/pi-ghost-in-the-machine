@@ -8,6 +8,11 @@ A tiny ASCII face living in Ghostty. It follows Pi from thought to work to compl
 
 The package bundles the Pi extension, lifecycle shaders, Ghostty controller, and optional Herdr focus/sidebar routing. No separate shader checkout or shell wrapper.
 
+<p align="center">
+  <a href="assets/demo/ghost-lifecycle.mp4"><img src="assets/demo/ghost-lifecycle.webp" alt="Real Ghostty shader cycling through idle, thinking, working, done, and error states" width="100%"></a>
+  <br><sub>Real Ghostty compositor capture. Click for MP4.</sub>
+</p>
+
 ## Requirements
 
 - Pi 0.80.4+
