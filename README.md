@@ -99,6 +99,16 @@ Runtime files live under:
 ~/.local/state/ghost-in-the-machine/
 ```
 
+## Experimental sidebar probe
+
+Without modifying Herdr, the bundled probe polls the current pane layout and logs geometry transitions:
+
+```sh
+scripts/watch-sidebar.sh /tmp/ghost-sidebar-watch.log
+```
+
+It uses `~/.local/bin/herdr` when `herdr` is missing from `PATH`. With Herdr's default desktop layout, `area.x <= 4` is classified as collapsed and larger values as expanded. This is diagnostic only: hidden-sidebar mode can be ambiguous with Herdr's mobile layout.
+
 ## Development
 
 ```sh
