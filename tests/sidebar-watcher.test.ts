@@ -99,6 +99,7 @@ async function startFakeHerdr(directory: string, scriptedResponses: ScriptedResp
 
   const server = net.createServer((socket) => {
     sockets.add(socket);
+    socket.on("error", () => undefined);
     activeConnections += 1;
     maximumConnections = Math.max(maximumConnections, activeConnections);
     socket.once("close", () => {

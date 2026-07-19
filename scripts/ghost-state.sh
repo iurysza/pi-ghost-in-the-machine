@@ -185,7 +185,7 @@ release_watcher_lock() {
 }
 
 lock_mtime() {
-    stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
 }
 
 acquire_watcher_lock() {
