@@ -1,6 +1,44 @@
 # Operations and Verification
 
-Runtime truth lives under `~/.local/state/ghost-in-the-machine/`. Diagnose from intent toward pixels:
+## Setup
+
+The normal install path is:
+
+```sh
+pi install git:github.com/iurysza/pi-ghost-in-the-machine
+~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine/scripts/setup.sh
+```
+
+`setup.sh` adds the stable runtime fragment to Ghostty's config, links the bundled Herdr plugin when Herdr is installed, starts the per-socket sidebar watcher, selects `idle`, and requests a Ghostty reload. Reload Pi with `/reload` afterward.
+
+For manual Ghostty setup, add:
+
+```ini
+config-file = ?/Users/you/.local/state/ghost-in-the-machine/ghostty-state.conf
+custom-shader-animation = true
+```
+
+Then initialize the shader and, if needed, Herdr routing:
+
+```sh
+~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine/scripts/ghost-state.sh apply idle
+herdr plugin link ~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine
+~/.pi/agent/git/github.com/iurysza/pi-ghost-in-the-machine/scripts/ghost-state.sh watch-start
+```
+
+## Runtime and diagnosis
+
+Runtime truth lives under `~/.local/state/ghost-in-the-machine/`:
+
+```text
+ghostty-state.conf       # Ghostty's actual shader input
+active.state             # controller's last selected state
+sidebar.state            # expanded/collapsed visibility gate
+panes/*.state            # remembered Pi pane states
+watchers/<socket-key>/   # one watcher identity per canonical API socket
+```
+
+Diagnose from intent toward pixels:
 
 ```mermaid
 flowchart TD
@@ -19,13 +57,17 @@ The stable runtime fragment matters more than `active.state`; it is Ghostty’s 
 
 ## Sidebar watcher
 
-`ghost-state.sh status` reports the canonical API socket, watcher PID, sidebar gate, and active shader. Per-socket runtime evidence lives under:
+`ghost-state.sh status` reports the canonical API socket, watcher PID, sidebar gate, and active shader. Per-socket runtime evidence is:
 
 ```text
-~/.local/state/ghost-in-the-machine/watchers/<socket-key>/
+watchers/<socket-key>/
+  socket-path
+  watcher.pid
+  watcher.log
+  start.lock/
 ```
 
-Read `socket-path` before trusting a stale PID. `watcher.log` records transitions, controller results, request errors and latency, plus a stop summary. `watch-start` recovers dead PID/lock files and returns the existing process for the same socket. `watch-stop` validates the watcher script and exact socket argument before signaling it.
+The directory key is the SHA-256 of the canonical socket path. Read `socket-path` before trusting a stale PID. `watcher.log` records transitions, controller results, request errors and latency, plus a stop summary. `watch-start` recovers dead PID/lock files and returns the existing process for the same socket. `watch-stop` validates the watcher script and exact socket argument before signaling it. Direct Pi sessions outside Herdr start no watcher, and `herdr-client.sock` is never a target.
 
 The watcher exits after 100 consecutive API failures. It retries failed sidebar controller actions after one second without treating repeated geometry as a new transition.
 
@@ -45,7 +87,7 @@ node scripts/benchmark-sidebar-watchers.mjs \
   --output ai-artifacts/docs/sidebar-watcher-performance.md
 ```
 
-See [[ai-artifacts/docs/sidebar-watcher-performance|sidebar watcher performance]] for the measured result and its limits.
+See [sidebar watcher performance](sidebar-watcher-performance.md) for the measured result and its limits.
 
 ## Release
 

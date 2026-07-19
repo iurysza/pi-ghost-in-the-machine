@@ -31,7 +31,8 @@
     "shaders",
     "herdr-plugin.toml",
     "AGENTS.md",
-    "ai-artifacts",
+    "ai-artifacts/docs",
+    "assets",
     "README.md",
     "LICENSE",
     "NOTICE"
