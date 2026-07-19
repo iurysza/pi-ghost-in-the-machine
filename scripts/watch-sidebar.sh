@@ -2,7 +2,7 @@
 set -euo pipefail
 
 LOG_FILE="${1:-${TMPDIR:-/tmp}/ghost-sidebar-watch.log}"
-INTERVAL="${SIDEBAR_POLL_INTERVAL:-0.2}"
+INTERVAL="${SIDEBAR_POLL_INTERVAL:-0.05}"
 
 if [[ -n "${HERDR_BIN_PATH:-}" ]]; then
     HERDR_BIN="$HERDR_BIN_PATH"
