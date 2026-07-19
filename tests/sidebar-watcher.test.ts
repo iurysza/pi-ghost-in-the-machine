@@ -26,6 +26,7 @@ interface ScriptedResponse {
   kind: "layout" | "malformed" | "error" | "close";
   x?: number;
   width?: number;
+  focusedPaneId?: string;
   delayMs?: number;
 }
 
@@ -130,7 +131,12 @@ async function startFakeHerdr(directory: string, scriptedResponses: ScriptedResp
         }
         socket.end(`${JSON.stringify({
           id: request.id,
-          result: { layout: { area: { x: response.x, width: response.width } } },
+          result: {
+            layout: {
+              area: { x: response.x, width: response.width },
+              focused_pane_id: response.focusedPaneId,
+            },
+          },
         })}\n`);
       }, response.delayMs ?? 0);
     });
@@ -164,7 +170,9 @@ if [[ -n "\${CONTROLLER_FAIL_ONCE_FILE:-}" && ! -e "$CONTROLLER_FAIL_ONCE_FILE" 
   printf 'failed:%s\\n' "$2" >> "$CONTROLLER_LOG"
   exit 1
 fi
-printf '%s\\n' "$2" >> "$CONTROLLER_LOG"
+printf '%s' "$2" >> "$CONTROLLER_LOG"
+[[ $# -lt 3 ]] || printf ':%s' "$3" >> "$CONTROLLER_LOG"
+printf '\\n' >> "$CONTROLLER_LOG"
 `);
   chmodSync(path, 0o755);
   return { path, log };
@@ -198,14 +206,14 @@ test("watcher frames pane.layout requests, serializes polls, and deduplicates tr
   mkdirSync(stateHome, { recursive: true });
   const fakeController = writeFakeController(directory);
   const herdr = await startFakeHerdr(directory, [
-    { kind: "layout", x: 36, width: 82, delayMs: 30 },
-    { kind: "layout", x: 36, width: 82 },
+    { kind: "layout", x: 36, width: 82, focusedPaneId: "pane-1", delayMs: 30 },
+    { kind: "layout", x: 36, width: 82, focusedPaneId: "pane-1" },
     { kind: "layout", x: 4, width: 114 },
     { kind: "malformed" },
     { kind: "error" },
     { kind: "close" },
     { kind: "layout", x: 4, width: 114 },
-    { kind: "layout", x: 36, width: 82 },
+    { kind: "layout", x: 36, width: 82, focusedPaneId: "pane-1" },
   ]);
   const runtime = watcherDirectory(stateHome, herdr.socketPath);
   const logFile = join(runtime, "watcher.log");
@@ -236,7 +244,7 @@ test("watcher frames pane.layout requests, serializes polls, and deduplicates tr
     assert.ok(herdr.requests.every((request) => request.method === "pane.layout"));
     assert.ok(herdr.requests.every((request) => JSON.stringify(request.params) === "{}"));
     assert.equal(new Set(herdr.requests.map((request) => request.id)).size, herdr.requests.length);
-    assert.equal(readFileSync(fakeController.log, "utf8"), "expanded\ncollapsed\nexpanded\n");
+    assert.equal(readFileSync(fakeController.log, "utf8"), "expanded:pane-1\ncollapsed\nexpanded:pane-1\n");
     assert.equal(readFileSync(socketFile, "utf8"), `${canonicalSocketPath(herdr.socketPath)}\n`);
     assert.equal(existsSync(pidFile), false);
 
@@ -355,10 +363,18 @@ test("controller starts one watcher per socket under concurrent starts", async (
     const aliasEnv = watcherEnvironment(stateHome, socketAlias, fakeController);
     await runCommand("bash", [controller, "watch-start"], aliasEnv);
     assert.equal(readFileSync(join(runtime, "watcher.pid"), "utf8").trim(), firstPid);
+
+    const alternateScripts = join(directory, "alternate checkout", "scripts");
+    const alternateWatcher = join(alternateScripts, "sidebar-watcher.mjs");
+    mkdirSync(alternateScripts, { recursive: true });
+    symlinkSync(watcher, alternateWatcher);
+    const alternateEnv = { ...env, GHOST_SIDEBAR_WATCHER_PATH: alternateWatcher };
+    await runCommand("bash", [controller, "watch-start"], alternateEnv);
+    assert.equal(readFileSync(join(runtime, "watcher.pid"), "utf8").trim(), firstPid);
     assert.equal(readdirSync(join(stateHome, "ghost-in-the-machine", "watchers")).length, 1);
     assert.equal(readFileSync(join(runtime, "watcher.log"), "utf8").match(/watcher=start/g)?.length, 1);
 
-    await runCommand("bash", [controller, "watch-stop"], env);
+    await runCommand("bash", [controller, "watch-stop"], alternateEnv);
     await waitFor(() => !existsSync(join(runtime, "watcher.pid")), "watch-stop did not clean the PID");
   } finally {
     await runCommand("bash", [controller, "watch-stop"], env).catch(() => undefined);

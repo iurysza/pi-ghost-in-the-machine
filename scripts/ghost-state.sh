@@ -22,7 +22,7 @@ fi
 mkdir -p "$RUNTIME" "$STATE_DIR" "$WATCHERS_DIR"
 
 usage() {
-    echo "usage: ghost-state {set STATE|clear|focus|apply STATE|sidebar collapsed|sidebar expanded|watch-start|watch-stop|status|config-path}" >&2
+    echo "usage: ghost-state {set STATE|clear|focus|apply STATE|sidebar collapsed|sidebar expanded [PANE_ID]|watch-start|watch-stop|status|config-path}" >&2
     echo "states: off idle thinking working done error" >&2
     exit 2
 }
@@ -100,14 +100,31 @@ apply_state() {
 }
 
 focused_state() {
-    local pane_json pane_id agent saved
-    pane_json="$(current_pane)" || {
+    local expected_pane="${1:-}" layout_json pane_json pane_id agent focused saved
+    if [[ -z "$expected_pane" ]]; then
+        layout_json="$("$HERDR_BIN" pane layout 2>/dev/null)" || {
+            apply_state off
+            return 1
+        }
+        expected_pane="$(jq -r '.result.layout.focused_pane_id // empty' <<<"$layout_json")"
+    fi
+    [[ -n "$expected_pane" ]] || {
         apply_state off
-        return
+        return 1
+    }
+
+    pane_json="$("$HERDR_BIN" pane get "$expected_pane" 2>/dev/null)" || {
+        apply_state off
+        return 1
     }
     pane_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
     agent="$(jq -r '.result.pane.agent // empty' <<<"$pane_json")"
-    if [[ "$agent" != "pi" || -z "$pane_id" ]]; then
+    focused="$(jq -r '.result.pane.focused // false' <<<"$pane_json")"
+    if [[ "$pane_id" != "$expected_pane" || "$focused" != "true" ]]; then
+        apply_state off
+        return 1
+    fi
+    if [[ "$agent" != "pi" ]]; then
         apply_state off
         return
     fi
@@ -117,8 +134,17 @@ focused_state() {
     apply_state "$saved"
 }
 
+restore_focused_state() {
+    local expected_pane="${1:-}" attempt
+    for attempt in $(seq 1 20); do
+        focused_state "$expected_pane" && return
+        sleep 0.05
+    done
+    return 1
+}
+
 set_state() {
-    local state="$1" pane_id="${HERDR_PANE_ID:-}" pane_json focused_id
+    local state="$1" pane_id="${HERDR_PANE_ID:-}" pane_json current_id focused
     valid_state "$state" || usage
 
     if [[ "${HERDR_ENV:-}" != "1" || -z "$pane_id" ]]; then
@@ -128,12 +154,14 @@ set_state() {
 
     printf '%s\n' "$state" > "$(pane_state_file "$pane_id")"
     pane_json="$(current_pane)" || return
-    focused_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
-    if [[ "$focused_id" == "$pane_id" ]]; then
+    current_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
+    focused="$(jq -r '.result.pane.focused // false' <<<"$pane_json")"
+    if [[ "$current_id" == "$pane_id" && "$focused" == "true" ]]; then
         apply_state "$state"
         pane_json="$(current_pane)" || return
-        focused_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
-        [[ "$focused_id" == "$pane_id" ]] || focused_state
+        current_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
+        focused="$(jq -r '.result.pane.focused // false' <<<"$pane_json")"
+        [[ "$current_id" == "$pane_id" && "$focused" == "true" ]] || focused_state
     fi
 }
 
@@ -168,12 +196,13 @@ watcher_paths() {
 }
 
 watcher_running() {
-    local pid command
+    local pid command identity
     pid="$(cat "$WATCH_PID" 2>/dev/null || true)"
     [[ "$pid" =~ ^[0-9]+$ ]] || return 1
     kill -0 "$pid" 2>/dev/null || return 1
     command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
-    [[ "$command" == *"$WATCHER"* && "$command" == *"--socket $WATCH_SOCKET --log"* ]]
+    identity="--socket $WATCH_SOCKET --log $WATCH_LOG --pid-file $WATCH_PID --socket-file $WATCH_SOCKET_FILE --controller"
+    [[ "$command" == *"$identity"* ]]
 }
 
 release_watcher_lock() {
@@ -306,7 +335,7 @@ stop_watcher() {
 }
 
 set_sidebar_state() {
-    local state="$1" tmp
+    local state="$1" expected_pane="${2:-}" tmp
     case "$state" in
         collapsed|expanded) ;;
         *) usage ;;
@@ -319,12 +348,12 @@ set_sidebar_state() {
     if [[ "$state" == "collapsed" ]]; then
         apply_state off
     else
-        focused_state
+        restore_focused_state "$expected_pane"
     fi
 }
 
 clear_state() {
-    local pane_id="${HERDR_PANE_ID:-}" pane_json focused_id
+    local pane_id="${HERDR_PANE_ID:-}" pane_json current_id focused
     if [[ -z "$pane_id" ]]; then
         apply_state off
         return
@@ -332,12 +361,14 @@ clear_state() {
 
     rm -f "$(pane_state_file "$pane_id")"
     pane_json="$(current_pane)" || return
-    focused_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
-    if [[ "$focused_id" == "$pane_id" ]]; then
+    current_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
+    focused="$(jq -r '.result.pane.focused // false' <<<"$pane_json")"
+    if [[ "$current_id" == "$pane_id" && "$focused" == "true" ]]; then
         apply_state off
         pane_json="$(current_pane)" || return
-        focused_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
-        [[ "$focused_id" == "$pane_id" ]] || focused_state
+        current_id="$(jq -r '.result.pane.pane_id // empty' <<<"$pane_json")"
+        focused="$(jq -r '.result.pane.focused // false' <<<"$pane_json")"
+        [[ "$current_id" == "$pane_id" && "$focused" == "true" ]] || focused_state
     fi
 }
 
@@ -359,8 +390,8 @@ case "${1:-}" in
         apply_state "$2"
         ;;
     sidebar)
-        [[ $# -eq 2 ]] || usage
-        set_sidebar_state "$2"
+        [[ $# -eq 2 || ( $# -eq 3 && "$2" == "expanded" ) ]] || usage
+        set_sidebar_state "$2" "${3:-}"
         ;;
     watch-start)
         [[ $# -eq 1 ]] || usage

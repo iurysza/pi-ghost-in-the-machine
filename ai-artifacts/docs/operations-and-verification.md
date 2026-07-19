@@ -67,7 +67,7 @@ watchers/<socket-key>/
   start.lock/
 ```
 
-The directory key is the SHA-256 of the canonical socket path. Read `socket-path` before trusting a stale PID. `watcher.log` records transitions, controller results, request errors and latency, plus a stop summary. `watch-start` recovers dead PID/lock files and returns the existing process for the same socket. `watch-stop` validates the watcher script and exact socket argument before signaling it. Direct Pi sessions outside Herdr start no watcher, and `herdr-client.sock` is never a target.
+The directory key is the SHA-256 of the canonical socket path. Read `socket-path` before trusting a stale PID. `watcher.log` records transitions, controller results, request errors and latency, plus a stop summary. `watch-start` recovers dead PID/lock files and returns the existing process for the same socket, even when another checkout started it. `watch-stop` validates the exact socket and runtime-file arguments before signaling it. Direct Pi sessions outside Herdr start no watcher, and `herdr-client.sock` is never a target.
 
 The watcher exits after 100 consecutive API failures. It retries failed sidebar controller actions after one second without treating repeated geometry as a new transition.
 

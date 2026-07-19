@@ -22,6 +22,16 @@ pgrep -x ghostty >/dev/null 2>&1 || {
     echo "live verification needs a running Ghostty GUI to send the Herdr sidebar key" >&2
     exit 2
 }
+[[ -n "${HERDR_PANE_ID:-}" ]] || {
+    echo "live verification needs HERDR_PANE_ID" >&2
+    exit 2
+}
+pane_json="$("$HERDR_BIN" pane get "$HERDR_PANE_ID")"
+[[ "$(jq -r '.result.pane.agent // empty' <<<"$pane_json")" == "pi" && \
+   "$(jq -r '.result.pane.focused // false' <<<"$pane_json")" == "true" ]] || {
+    echo "live verification pane $HERDR_PANE_ID must be the focused Pi pane" >&2
+    exit 2
+}
 
 layout_x() {
     "$HERDR_BIN" pane layout --current | jq -r '.result.layout.area.x'
@@ -76,6 +86,20 @@ wait_for_status() {
     return 1
 }
 
+wait_for_visible_status() {
+    local attempt status
+    for attempt in $(seq 1 100); do
+        status="$($CONTROLLER status)"
+        if [[ "$status" =~ active=(idle|thinking|working|done|error) ]] && [[ "$status" == *"sidebar=expanded"* ]]; then
+            printf '%s\n' "$status"
+            return 0
+        fi
+        sleep 0.05
+    done
+    echo "expanded sidebar did not restore a visible state" >&2
+    return 1
+}
+
 toggle_and_wait() {
     local expected="$1" attempt result
     for attempt in $(seq 1 3); do
@@ -119,7 +143,7 @@ suppressed_status="$(wait_for_status 'active=off sidebar=collapsed')"
 printf 'suppressed %s\n' "$suppressed_status"
 
 expanded_x="$(toggle_and_wait expanded)"
-restored_status="$(wait_for_status 'active=working sidebar=expanded')"
+restored_status="$(wait_for_visible_status)"
 printf 'expanded area_x=%s %s\n' "$expanded_x" "$restored_status"
 
 "$CONTROLLER" watch-stop

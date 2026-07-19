@@ -136,8 +136,13 @@ function requestLayout(socketPath, requestId, timeoutMs, onSocket) {
         if (parsed.error) throw new Error(`Herdr API error: ${JSON.stringify(parsed.error)}`);
         const x = parsed?.result?.layout?.area?.x;
         const width = parsed?.result?.layout?.area?.width;
+        const focusedPaneId = parsed?.result?.layout?.focused_pane_id;
         if (!Number.isFinite(x)) throw new Error("response missing result.layout.area.x");
-        finish(undefined, { x, width: Number.isFinite(width) ? width : undefined });
+        finish(undefined, {
+          x,
+          width: Number.isFinite(width) ? width : undefined,
+          focusedPaneId: typeof focusedPaneId === "string" ? focusedPaneId : undefined,
+        });
       } catch (error) {
         finish(error instanceof Error ? error : new Error(String(error)));
       }
@@ -149,9 +154,11 @@ function requestLayout(socketPath, requestId, timeoutMs, onSocket) {
   });
 }
 
-function runController(controller, state, socketPath, timeoutMs, killGraceMs, onChild) {
+function runController(controller, state, focusedPaneId, socketPath, timeoutMs, killGraceMs, onChild) {
   return new Promise((resolveAction) => {
-    const child = spawn("bash", [controller, "sidebar", state], {
+    const args = [controller, "sidebar", state];
+    if (state === "expanded" && focusedPaneId) args.push(focusedPaneId);
+    const child = spawn("bash", args, {
       env: { ...process.env, HERDR_SOCKET_PATH: socketPath },
       stdio: ["ignore", "ignore", "pipe"],
     });
@@ -266,12 +273,13 @@ async function run(options) {
         if (state !== observedState) {
           observedState = state;
           nextActionAt = 0;
-          log(`state=${state} area_x=${layout.x} area_width=${layout.width ?? "unknown"} latency_ms=${latencyMs.toFixed(3)} socket=${JSON.stringify(options.socketPath)}`);
+          log(`state=${state} area_x=${layout.x} area_width=${layout.width ?? "unknown"} focused_pane_id=${JSON.stringify(layout.focusedPaneId ?? "unknown")} latency_ms=${latencyMs.toFixed(3)} socket=${JSON.stringify(options.socketPath)}`);
         }
         if (state !== appliedState && Date.now() >= nextActionAt) {
           const action = await runController(
             options.controller,
             state,
+            layout.focusedPaneId,
             options.socketPath,
             options.controllerTimeoutMs,
             options.controllerKillGraceMs,
