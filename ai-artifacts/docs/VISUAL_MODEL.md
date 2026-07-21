@@ -26,17 +26,7 @@ npm run generate
 
 ## 2. Placement
 
-```text
-viewport
-┌──────────────────────────────┐
-│  ↔ 0.5% minimum footprint gap│
-│       ghost center: 40% ↓    │
-│       size: 12.6% of height  │
-│                              │
-└──────────────────────────────┘
-```
-
-The gap clamps the full animated footprint, including drift and decorations. The face renders on a dense `8 × 17 px` virtual ASCII grid so small features remain legible; sidebar placement separately uses real `16 px` terminal-cell width.
+The face keeps one height-based size and one `16 px × 29` sidebar-center placement on every display. Its full animated footprint may move right only when needed to retain a `0.1%` viewport-width gap at the left edge; it never shrinks or switches layout based on cursor geometry. The face always renders on the dense `8 × 17 px` virtual ASCII grid.
 
 ## 3. Visual invariants
 
